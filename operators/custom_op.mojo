@@ -23,7 +23,8 @@ from max.tensor import OutputTensor, InputTensor
 
 fn tiled_register_matmul[
         dtype: DType, A_layout: Layout, B_layout: Layout, C_layout: Layout,
-        BM: Int, BK: Int, BN: Int, TM: Int, NUM_THREADS: Int, version: StaticString
+        BM: Int, BK: Int, BN: Int, TM: Int, COMPUTE_THREADS: Int,
+        NUM_THREADS: Int, version: StaticString
     ](
         A: LayoutTensor[dtype, A_layout, MutableAnyOrigin],
         B: LayoutTensor[dtype, B_layout, MutableAnyOrigin],
@@ -35,14 +36,21 @@ fn tiled_register_matmul[
 
         var subtile_row = thread_idx.x // BN
         var subtile_col = thread_idx.x % BN
+        var max_subtile_rows = BM // TM
+        var participates_in_compute = subtile_row < max_subtile_rows and thread_idx.x < COMPUTE_THREADS
 
         var A_smem = tensor_builder[dtype]().row_major[BM, BK]().shared().alloc()
         var B_smem = tensor_builder[dtype]().row_major[BK, BN]().shared().alloc()
 
-        var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)
-                          .tile[TM, 1](subtile_row, subtile_col)
         var dst_reg = tensor_builder[dtype]().layout[TM]().local().alloc()
-        dst_reg.copy_from(dst_subtile) # copy the initial zeros
+        var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x).tile[TM, 1](0, 0)
+
+        if participates_in_compute:
+            dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)
+                          .tile[TM, 1](subtile_row, subtile_col)
+            dst_reg.copy_from(dst_subtile) # copy the initial zeros
+
+        barrier()
 
         for block in range(ceildiv(K, BK)):
             alias A_tile_layout = Layout.row_major(BM, BK)
@@ -60,17 +68,19 @@ fn tiled_register_matmul[
                 async_copy_wait_all()
             barrier()
 
-            for k in range(BK):
-                var A_subtile = A_smem.tile[TM, 1](subtile_row, k)
-                var B_subtile = B_smem.tile[1, BN](k, 0)
-                var B_element = B_subtile[0, subtile_col]
+            if participates_in_compute:
+                for k in range(BK):
+                    var A_subtile = A_smem.tile[TM, 1](subtile_row, k)
+                    var B_subtile = B_smem.tile[1, BN](k, 0)
+                    var B_element = B_subtile[0, subtile_col]
 
-                for t in range(TM):
-                    dst_reg[t] += A_subtile[t, 0] * B_element
+                    for t in range(TM):
+                        dst_reg[t] += A_subtile[t, 0] * B_element
 
             barrier()
 
-        dst_subtile.copy_from(dst_reg)
+        if participates_in_compute:
+            dst_subtile.copy_from(dst_reg)
 
 
 @compiler.register("my_matmul")
@@ -107,12 +117,14 @@ struct MyMatMul[version: StaticString]:
         alias BK = OPTIMIZED_BLOCK_SIZE
 
         alias TM = 4
-        alias NUM_THREADS = (BM * BN) // TM
+        alias COMPUTE_THREADS = (BM * BN) // TM
+        alias COPY_THREADS = max(BM * BK, BK * BN)
+        alias NUM_THREADS = max(COMPUTE_THREADS, COPY_THREADS)
 
         device_ctx.enqueue_function[
             tiled_register_matmul[
                 output.dtype, A.layout, B.layout, output.layout,
-                BM, BK, BN, TM, NUM_THREADS, version
+                BM, BK, BN, TM, COMPUTE_THREADS, NUM_THREADS, version
             ]
         ](
             A, B, output,
