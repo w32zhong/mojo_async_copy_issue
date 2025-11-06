@@ -54,7 +54,7 @@ fn tiled_register_matmul[
             if version == "good":
                 A_smem.copy_from(A_tile)
                 B_smem.copy_from(B_tile)
-            elif version == "buggy":
+            elif version == "bad":
                 copy_dram_to_sram_async[thread_layout=A_tile_layout](A_smem, A_tile)
                 copy_dram_to_sram_async[thread_layout=B_tile_layout](B_smem, B_tile)
                 async_copy_wait_all()

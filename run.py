@@ -39,7 +39,7 @@ A = Tensor.from_numpy(torch_A.numpy()).to(device)
 B = Tensor.from_numpy(torch_B.numpy()).to(device)
 
 from max.engine import InferenceSession
-for version in ['good', 'buggy']:
+for version in ['good', 'bad']:
     session = InferenceSession(devices=[device])
     graph =  build_graph(session, version=version)
     mojo_result = graph.execute(A, B)[0].to_numpy()
