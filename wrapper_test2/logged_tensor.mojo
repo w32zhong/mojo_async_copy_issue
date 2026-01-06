@@ -67,7 +67,15 @@ struct LoggedTensor[
     @staticmethod
     fn stack_allocation[
         *, stack_alignment: Int = Self.ImplType.alignment
-    ]() -> LoggedTensor[dtype, layout, MutAnyOrigin, address_space=address_space]:
+    ]() -> LoggedTensor[
+            dtype,
+            layout,
+            MutAnyOrigin,
+            address_space=address_space,
+            layout_int_type=layout_int_type,
+            linear_idx_type=linear_idx_type,
+            masked=masked
+        ]:
         return LoggedTensor(
             Self.ImplType.stack_allocation[stack_alignment=stack_alignment](),
             _get_address_space_name[address_space]()
@@ -187,6 +195,7 @@ fn tiled_register_matmul[
 
         var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)
                            .tile[TM, 1](subtile_row, subtile_col)
+        dst_subtile.print()
 
 
 fn main() raises:
