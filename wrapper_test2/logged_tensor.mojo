@@ -3,6 +3,17 @@ from layout import LayoutTensor, Layout
 from gpu.memory import AddressSpace
 
 
+fn _get_address_space_name[addr: AddressSpace]() -> String:
+    @parameter
+    if addr == AddressSpace.GENERIC: return "AddressSpace.GENERIC"
+    @parameter
+    if addr == AddressSpace.GLOBAL: return "AddressSpace.GLOBAL"
+    @parameter
+    if addr == AddressSpace.SHARED: return "AddressSpace.SHARED"
+    @parameter
+    if addr == AddressSpace.LOCAL: return "AddressSpace.LOCAL"
+    return "AddressSpace(Unknown)"
+
 struct LoggedTensor[
     mut: Bool,
     //,
@@ -12,10 +23,16 @@ struct LoggedTensor[
     /,
     *,
     address_space: AddressSpace = AddressSpace.GENERIC,
+    layout_int_type: DType = DType.int32,
+    linear_idx_type: DType = DType.int32,
+    masked: Bool = False,
 ]:
     alias ImplType = LayoutTensor[
         dtype, layout, origin,
         address_space=address_space,
+        layout_int_type=layout_int_type,
+        linear_idx_type=linear_idx_type,
+        masked=masked,
     ]
 
     var impl: Self.ImplType
@@ -46,12 +63,44 @@ struct LoggedTensor[
     fn dim[idx: Int](self) -> Int:
         return self.impl.dim[idx]()
 
+    @always_inline
     @staticmethod
     fn stack_allocation[
         *, stack_alignment: Int = Self.ImplType.alignment
     ]() -> LoggedTensor[dtype, layout, MutAnyOrigin, address_space=address_space]:
-        var impl = Self.ImplType.stack_allocation[stack_alignment=stack_alignment]()
-        return LoggedTensor(impl, String(address_space))
+        return LoggedTensor(
+            Self.ImplType.stack_allocation[stack_alignment=stack_alignment](),
+            _get_address_space_name[address_space]()
+        )
+
+    @always_inline
+    fn tile[
+        *tile_sizes: Int
+    ](self, x: Int, y: Int) raises -> LoggedTensor[
+        dtype,
+        Self.ImplType.TileType[*tile_sizes].layout, 
+        origin,
+        address_space=Self.ImplType.TileType[*tile_sizes].address_space,
+        layout_int_type=Self.ImplType.TileType[*tile_sizes].layout_int_type,
+        linear_idx_type=Self.ImplType.TileType[*tile_sizes].linear_idx_type,
+        masked=Self.ImplType.TileType[*tile_sizes].masked,
+    ]:
+        var tiled_view = self.impl.tile[*tile_sizes](x, y)
+        var new_name = self.name + ".tile(" + String(x) + ", " + String(y) + ")"
+
+        var new_origin_x = self.origin_x + x * tile_sizes[0]
+        var new_origin_y = self.origin_y + y * tile_sizes[1]
+
+        alias NewT = Self.ImplType.TileType[*tile_sizes]
+        return LoggedTensor[
+            dtype,
+            NewT.layout, 
+            origin,
+            address_space=NewT.address_space,
+            layout_int_type=NewT.layout_int_type,
+            linear_idx_type=NewT.linear_idx_type,
+            masked=NewT.masked,
+        ](tiled_view, new_name, new_origin_x, new_origin_y)
 
 
 fn example_logged_tensor[
@@ -90,7 +139,7 @@ fn tiled_register_matmul[
         A: LoggedTensor[dtype, A_layout, MutAnyOrigin],
         B: LoggedTensor[dtype, B_layout, MutAnyOrigin],
         C: LoggedTensor[dtype, C_layout, MutAnyOrigin],
-    ):
+    ) raises:
         var M = A.dim[0]()
         var K = B.dim[0]()
         var N = B.dim[1]()
@@ -110,24 +159,25 @@ fn tiled_register_matmul[
             address_space = AddressSpace.SHARED,
         ].stack_allocation()
 
-        A_smem.print()
+        var B_smem = LoggedTensor[
+            dtype,
+            Layout.row_major(BK, BN),
+            MutAnyOrigin,
+            address_space = AddressSpace.SHARED,
+        ].stack_allocation()
 
-        #var B_smem = LoggedTensor[
-        #    dtype,
-        #    Layout.row_major(BK, BN),
-        #    MutAnyOrigin,
-        #    address_space = AddressSpace.SHARED,
-        #].stack_allocation()
+        var dst_reg = LoggedTensor[
+            dtype,
+            Layout(TM),
+            MutAnyOrigin,
+            address_space = AddressSpace.LOCAL,
+        ].stack_allocation()
 
-        #var dst_reg = LoggedTensor[
-        #    dtype,
-        #    Layout(TM),
-        #    MutAnyOrigin,
-        #    address_space = AddressSpace.LOCAL,
-        #].stack_allocation()
+        var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)
+                           .tile[TM, 1](subtile_row, subtile_col)
 
 
-fn main():
+fn main() raises:
     alias M = 4096
     alias K = 6144
     alias N = 2048
