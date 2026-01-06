@@ -22,10 +22,14 @@ struct LoggedTensor[
     ]
     var impl: Self.ImplType
     var name: String
+    var origin_x: Int
+    var origin_y: Int
 
-    fn __init__(out self, impl: Self.ImplType, name: String = "Tensor"):
+    fn __init__(out self, impl: Self.ImplType, name: String = "Tensor", origin_x: Int = 0, origin_y: Int = 0):
         self.impl = impl
         self.name = name
+        self.origin_x = origin_x
+        self.origin_y = origin_y
 
     # --- 1D Access ---
     @always_inline
@@ -42,20 +46,26 @@ struct LoggedTensor[
     @always_inline
     fn __getitem__(self, x: Int, y: Int) -> SIMD[dt, Self.ImplType.element_size]:
         var offset = self.impl._offset(x, y)
-        print("[", self.name, "READ] coords: (", x, ",", y, ") -> linear offset:", offset)
+        var gx = self.origin_x + x
+        var gy = self.origin_y + y
+        print("[", self.name, "READ] coords: (", x, ",", y, ") -> global: (", gx, ",", gy, ") -> linear offset:", offset)
         return self.impl[x, y]
 
     @always_inline
     fn __setitem__(mut self, x: Int, y: Int, val: SIMD[dt, Self.ImplType.element_size]):
         var offset = self.impl._offset(x, y)
-        print("[", self.name, "WRITE] coords: (", x, ",", y, ") -> linear offset:", offset, "val:", val)
+        var gx = self.origin_x + x
+        var gy = self.origin_y + y
+        print("[", self.name, "WRITE] coords: (", x, ",", y, ") -> global: (", gx, ",", gy, ") -> linear offset:", offset, "val:", val)
         self.impl[x, y] = val
 
     # --- Vectorized Access (SIMD) ---
     @always_inline
     fn load[width: Int](self, x: Int, y: Int) -> SIMD[dt, width]:
         var offset = self.impl._offset(x, y)
-        print("[", self.name, "READ SIMD] coords: (", x, ",", y, ") -> offset:", offset, "width:", width)
+        var gx = self.origin_x + x
+        var gy = self.origin_y + y
+        print("[", self.name, "READ SIMD] coords: (", x, ",", y, ") -> global: (", gx, ",", gy, ") -> offset:", offset, "width:", width)
         return self.impl.load[width](x, y)
 
     # Store not supported by LayoutTensor?
@@ -79,7 +89,11 @@ struct LoggedTensor[
     ]:
         var tiled_view = self.impl.tile[*tile_sizes](x, y)
         var new_name = self.name + ".tile(" + String(x) + "," + String(y) + ")"
-        print("---", "Tiling", self.name, "extracting tile at", x, ",", y, "---")
+        
+        var new_origin_x = self.origin_x + x * tile_sizes[0]
+        var new_origin_y = self.origin_y + y * tile_sizes[1]
+
+        print("---", "Tiling", self.name, "extracting tile at", x, ",", y, "(Global origin:", new_origin_x, ",", new_origin_y, ") ---")
         
         alias NewT = Self.ImplType.TileType[*tile_sizes]
         return LoggedTensor[
@@ -91,7 +105,7 @@ struct LoggedTensor[
             NewT.address_space,
             NewT.layout_int_type,
             NewT.linear_idx_type
-        ](tiled_view, new_name)
+        ](tiled_view, new_name, new_origin_x, new_origin_y)
 
     # --- Utility methods ---
     fn dim(self, idx: Int) -> Int:
@@ -122,7 +136,7 @@ fn main():
     print("\n--- Tiled Access ---")
     # Extract a 2x2 tile from the top-right (grid coords 0, 1)
     # Note: Using (x, y) directly instead of (0, 1) as tuple due to unpacking limit
-    var top_right_tile = tensor.tile[2, 2](0, 1)
+    var top_right_tile = tensor.tile[2, 2](1, 1)
     
     # Accessing the tile should log both the coordinate in the tile 
     # AND show the correct linear offset into the original memory.
