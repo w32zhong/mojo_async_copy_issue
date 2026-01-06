@@ -108,14 +108,26 @@ fn example_logged_tensor[
     ](name: String) -> LoggedTensor[
         DType.float32,
         Layout.row_major(rows, cols),
-        MutAnyOrigin
+        MutAnyOrigin,
+        address_space=AddressSpace.GENERIC,
+        layout_int_type=DType.int32,
+        linear_idx_type=DType.int32,
+        masked=False
     ]:
     comptime buf_size = rows * cols
     var ptr = alloc[Float32](buf_size)
     for i in range(buf_size):
         ptr[i] = Float32(random_si64(-5, 5))
     comptime layout = Layout.row_major(rows, cols)
-    var tensor = LayoutTensor[DType.float32, layout](UnsafePointer[Float32, MutAnyOrigin](ptr))
+    var tensor = LayoutTensor[
+        DType.float32,
+        layout,
+        MutAnyOrigin,
+        address_space=AddressSpace.GENERIC,
+        layout_int_type=DType.int32,
+        linear_idx_type=DType.int32,
+        masked=False
+    ](UnsafePointer[Float32, MutAnyOrigin](ptr))
     return LoggedTensor(tensor, name)
 
 
