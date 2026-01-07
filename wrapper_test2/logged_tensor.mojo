@@ -68,10 +68,10 @@ struct LoggedTensor[
     fn print(read self) raises:
         max_rows = min(self.impl.shape[0](), 100)
         max_cols = min(self.impl.shape[1](), 30)
+        print("{}@[{}, {}]".format(
+            self.name, self.origin_x, self.origin_y
+        ), end=":\n")
         for row in range(max_rows):
-            print("{}@[{}, {}]".format(
-                self.name, self.origin_x, self.origin_y
-            ), end=": ")
             for col in range(max_cols):
                 print(
                     String(self.impl[row, col]).rjust(5),
@@ -113,7 +113,9 @@ struct LoggedTensor[
         masked=Self.ImplType.TileType[*tile_sizes].masked,
     ]:
         var tiled_view = self.impl.tile[*tile_sizes](x, y)
-        var new_name = "{}.tile({}, {})".format(self.name, x, y)
+        var new_name = "{}.tile[{}, {}]({}, {})".format(
+            self.name, tile_sizes[0], tile_sizes[1], x, y
+        )
 
         var new_origin_x = self.origin_x + x * tile_sizes[0]
         var new_origin_y = self.origin_y + y * tile_sizes[1]
@@ -230,6 +232,7 @@ fn tiled_register_matmul[
 
         var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)
                            .tile[TM, 1](subtile_row, subtile_col)
+        dst_subtile.print()
 
         dst_reg.copy_from(dst_subtile)
 
@@ -247,14 +250,14 @@ fn tiled_register_matmul[
 
             barrier()
 
-            for k in range(BK):
-                var A_subtile = A_smem.tile[TM, 1](subtile_row, k)
-                var B_subtile = B_smem.tile[1, BN](k, 0)
-                var B_element = B_subtile[0, subtile_col]
+            #for k in range(BK):
+            #    var A_subtile = A_smem.tile[TM, 1](subtile_row, k)
+            #    var B_subtile = B_smem.tile[1, BN](k, 0)
+            #    var B_element = B_subtile[0, subtile_col]
 
-                for t in range(TM):
-                    product = A_subtile[t, 0] * B_element
-                    dst_reg[t] += product
+            #    for t in range(TM):
+            #        product = A_subtile[t, 0] * B_element
+            #        dst_reg[t] += product
 
             barrier()
 
