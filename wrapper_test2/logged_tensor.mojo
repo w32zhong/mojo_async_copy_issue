@@ -14,6 +14,7 @@ fn _get_address_space_name[addr: AddressSpace]() -> String:
     if addr == AddressSpace.LOCAL: return "AddressSpace.LOCAL"
     return "AddressSpace(Unknown)"
 
+
 struct LoggedTensor[
     mut: Bool,
     //,
@@ -50,10 +51,14 @@ struct LoggedTensor[
         self.origin_x = origin_x
         self.origin_y = origin_y
 
-    fn print(read self):
-        for row in range(self.impl.shape[0]()):
-            print(self.name, end=": ")
-            for col in range(self.impl.shape[1]()):
+    fn print(read self) raises:
+        max_rows = min(self.impl.shape[0](), 100)
+        max_cols = min(self.impl.shape[1](), 30)
+        for row in range(max_rows):
+            print("{}@[{}, {}]".format(
+                self.name, self.origin_x, self.origin_y
+            ), end=": ")
+            for col in range(max_cols):
                 print(
                     String(self.impl[row, col]).rjust(5),
                     end=""
@@ -94,7 +99,7 @@ struct LoggedTensor[
         masked=Self.ImplType.TileType[*tile_sizes].masked,
     ]:
         var tiled_view = self.impl.tile[*tile_sizes](x, y)
-        var new_name = self.name + ".tile(" + String(x) + ", " + String(y) + ")"
+        var new_name = "{}.tile({}, {})".format(self.name, x, y)
 
         var new_origin_x = self.origin_x + x * tile_sizes[0]
         var new_origin_y = self.origin_y + y * tile_sizes[1]
@@ -218,8 +223,8 @@ fn main() raises:
 
     ###
 
-    alias block_idx = MockGPUIndex(0, 0, 0)
-    alias thread_idx = MockGPUIndex(0, 0, 0)
+    alias block_idx = MockGPUIndex(1, 0, 0)
+    alias thread_idx = MockGPUIndex(2, 0, 0)
 
     tiled_register_matmul[
         DType.float32,
