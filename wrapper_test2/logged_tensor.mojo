@@ -210,16 +210,18 @@ fn tiled_register_matmul[
 
         var dst_reg = LoggedTensor[
             dtype,
-            Layout(TM),
+            Layout.row_major(TM, 1),
             MutAnyOrigin,
             address_space = AddressSpace.LOCAL,
         ].stack_allocation()
 
         var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)
                            .tile[TM, 1](subtile_row, subtile_col)
-        dst_subtile.print()
 
+        dst_subtile.print()
+        dst_reg.print()
         dst_reg.copy_from(dst_subtile)
+        dst_reg.print()
 
 
 fn main() raises:
