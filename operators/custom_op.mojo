@@ -50,14 +50,14 @@ fn tiled_register_matmul[
             dtype,
             Layout.row_major(BK, BN),
             MutAnyOrigin,
-            address_space = AddressSpace.SHARED,
+            address_space=AddressSpace.SHARED,
         ].stack_allocation()
 
         var dst_reg = LayoutTensor[
             dtype,
             Layout(TM),
             MutAnyOrigin,
-            address_space = AddressSpace.LOCAL,
+            address_space=AddressSpace.LOCAL,
         ].stack_allocation()
 
         var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)

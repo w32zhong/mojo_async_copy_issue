@@ -115,6 +115,9 @@ struct LoggedTensor[
             masked=NewT.masked,
         ](tiled_view, new_name, new_origin_x, new_origin_y)
 
+    fn copy_from(mut self, other: LoggedTensor):
+        return self.impl.copy_from(other.impl)
+
 
 fn example_logged_tensor[
         rows: Int, cols: Int
@@ -201,6 +204,8 @@ fn tiled_register_matmul[
         var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)
                            .tile[TM, 1](subtile_row, subtile_col)
         dst_subtile.print()
+
+        dst_reg.copy_from(dst_subtile)
 
 
 fn main() raises:
