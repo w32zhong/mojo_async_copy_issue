@@ -132,6 +132,12 @@ struct LoggedTensor[
     fn copy_from(mut self: Self._AsMut, other: LoggedTensor):
         return self.impl.copy_from(other.impl)
 
+    fn __getitem__(self, x: Int, y: Int) -> Self.ImplType.element_type:
+        return self.impl[x, y]
+
+    fn __getitem__(self, x: Int) -> Self.ImplType.element_type:
+        return self.impl[x, 0]
+
 
 fn example_logged_tensor[
         rows: Int, cols: Int
@@ -161,6 +167,8 @@ fn example_logged_tensor[
     return LoggedTensor(tensor, name)
 
 
+from math import ceildiv
+
 struct MockGPUIndex:
     var x: Int
     var y: Int
@@ -170,6 +178,8 @@ struct MockGPUIndex:
         self.y = y
         self.z = z
 
+fn barrier():
+    return
 
 fn tiled_register_matmul[
         dtype: DType, A_layout: Layout, B_layout: Layout, C_layout: Layout,
@@ -218,10 +228,31 @@ fn tiled_register_matmul[
         var dst_subtile = C.tile[BM, BN](block_idx.y, block_idx.x)
                            .tile[TM, 1](subtile_row, subtile_col)
 
-        dst_subtile.print()
-        dst_reg.print()
         dst_reg.copy_from(dst_subtile)
-        dst_reg.print()
+
+        barrier()
+
+        for block in range(ceildiv(K, BK)):
+            comptime A_tile_layout = Layout.row_major(BM, BK)
+            comptime B_tile_layout = Layout.row_major(BK, BN)
+
+            var A_tile = A.tile[BM, BK](block_idx.y, block)
+            var B_tile = B.tile[BK, BN](block, block_idx.x)
+
+            A_smem.copy_from(A_tile)
+            B_smem.copy_from(B_tile)
+
+            barrier()
+
+            for k in range(BK):
+                var A_subtile = A_smem.tile[TM, 1](subtile_row, k)
+                var B_subtile = B_smem.tile[1, BN](k, 0)
+                var B_element = B_subtile[0, subtile_col]
+
+                for t in range(TM):
+                    dst_reg[t] += A_subtile[t, 0] * B_element
+
+            barrier()
 
 
 fn main() raises:
