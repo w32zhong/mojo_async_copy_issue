@@ -36,6 +36,20 @@ struct LoggedTensor[
         masked=masked,
     ]
 
+    alias OriginCastType[
+        mut: Bool,
+        origin: Origin[mut=mut],
+    ] = LoggedTensor[
+        Self.dtype,
+        Self.layout,
+        origin,
+        address_space = Self.address_space,
+        layout_int_type = Self.layout_int_type,
+        linear_idx_type = Self.linear_idx_type,
+        masked = Self.masked,
+    ]
+    alias _AsMut = Self.OriginCastType[True, _]
+
     var impl: Self.ImplType
     var name: String
     var origin_x: Int
@@ -115,7 +129,7 @@ struct LoggedTensor[
             masked=NewT.masked,
         ](tiled_view, new_name, new_origin_x, new_origin_y)
 
-    fn copy_from(mut self, other: LoggedTensor):
+    fn copy_from(mut self: Self._AsMut, other: LoggedTensor):
         return self.impl.copy_from(other.impl)
 
 
