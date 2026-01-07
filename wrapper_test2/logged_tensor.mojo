@@ -254,13 +254,12 @@ fn tiled_register_matmul[
 
                 for t in range(TM):
                     product = A_subtile[t, 0] * B_element
-                    print(dst_reg[t])
-                    print(product)
                     dst_reg[t] += product
-                    print(dst_reg[t])
-                    break
-                break
-            break
+
+            barrier()
+
+        if participates_in_compute:
+            dst_subtile.copy_from(dst_reg)
 
 
 fn main() raises:
