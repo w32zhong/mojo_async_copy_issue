@@ -138,6 +138,9 @@ struct LoggedTensor[
     fn __getitem__(self, x: Int) -> Self.ImplType.element_type:
         return self.impl[x, 0]
 
+    fn __setitem__(self, x: Int, val: Self.ImplType.element_type) where Self.mut:
+        self.impl[x, 0] = val
+
 
 fn example_logged_tensor[
         rows: Int, cols: Int
@@ -250,9 +253,14 @@ fn tiled_register_matmul[
                 var B_element = B_subtile[0, subtile_col]
 
                 for t in range(TM):
-                    dst_reg[t] += A_subtile[t, 0] * B_element
-
-            barrier()
+                    product = A_subtile[t, 0] * B_element
+                    print(dst_reg[t])
+                    print(product)
+                    dst_reg[t] += product
+                    print(dst_reg[t])
+                    break
+                break
+            break
 
 
 fn main() raises:
